@@ -1,0 +1,25 @@
+{
+  "name": "spark-clip-agent",
+  "version": "0.1.0",
+  "description": "Slack-driven agent that produces 5 avatar-free product-video ads (15 Spark Clips) via Gemini storyboards + Higgsfield Seedance 2, logged to Notion and delivered via Google Drive.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "init-db": "node src/store.js --init"
+  },
+  "dependencies": {
+    "@higgsfield/client": "^0.2.2",
+    "@notionhq/client": "^2.2.15",
+    "@slack/bolt": "^3.22.0",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "googleapis": "^144.0.0",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
