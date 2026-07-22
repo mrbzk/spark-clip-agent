@@ -1,5 +1,3 @@
-// Gemini image generation for storyboard frames (Nano Banana family).
-// Uses the REST generateContent endpoint so there's no extra SDK dependency.
 import fetch from "node-fetch";
 import { config } from "../config.js";
 import { buildStoryboardPrompt } from "../prompts.js";
@@ -7,14 +5,33 @@ import { buildStoryboardPrompt } from "../prompts.js";
 const ENDPOINT = (model) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
-// productImages: [{ mimeType, base64 }]
+async function urlToBase64(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch image ${url}: ${res.status}`);
+  const mimeType = res.headers.get("content-type")?.split(";")[0] || "image/jpeg";
+  const buffer = await res.arrayBuffer();
+  return { mimeType, base64: Buffer.from(buffer).toString("base64") };
+}
+
+async function resolveImages(productImages) {
+  return (await Promise.all(
+    (productImages || []).map(async (img) => {
+      if (img.mimeType && img.base64) return img;
+      if (img.hostedUrl) return urlToBase64(img.hostedUrl).catch(() => null);
+      return null;
+    })
+  )).filter(Boolean);
+}
+
 async function generateOneFrame(promptText, productImages) {
   const parts = [{ text: promptText }];
   for (const img of productImages || []) {
-    parts.push({ inline_data: { mime_type: img.mimeType, data: img.base64 } });
+    if (img.mimeType && img.base64) {
+      parts.push({ inline_data: { mime_type: img.mimeType, data: img.base64 } });
+    }
   }
 
-  const res = await fetch(`${ENDPOINT(config.gemini.imageModel)}`, {
+  const res = await fetch(ENDPOINT(config.gemini.imageModel), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -22,7 +39,6 @@ async function generateOneFrame(promptText, productImages) {
     },
     body: JSON.stringify({
       contents: [{ role: "user", parts }],
-      // image models return image parts in the candidate content
       generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
     }),
   });
@@ -31,8 +47,7 @@ async function generateOneFrame(promptText, productImages) {
   const data = await res.json();
 
   const out = { text: "", images: [] };
-  const cand = data.candidates?.[0]?.content?.parts || [];
-  for (const p of cand) {
+  for (const p of data.candidates?.[0]?.content?.parts || []) {
     if (p.text) out.text += p.text;
     const inline = p.inline_data || p.inlineData;
     if (inline?.data) out.images.push({ mimeType: inline.mime_type || inline.mimeType, base64: inline.data });
@@ -40,53 +55,57 @@ async function generateOneFrame(promptText, productImages) {
   return out;
 }
 
-// Generates the full storyboard: a structured plan (text) + one frame per clip.
-// Returns { plan, frames: [{ video, clip, mimeType, base64 }] }
-export async function generateStoryboard(brief, feedback = null) {
-  const masterPrompt = buildStoryboardPrompt(brief, feedback);
+// Step 1: Generate the full storyboard plan (text-only, fast).
+// Returns { plan: { videos: [{ video_title, hook, clips: [{ clip_no, shot_description, camera_move }] }] } }
+export async function generatePlan(brief, feedback = null) {
+  const prompt = buildStoryboardPrompt(brief, feedback) +
+    "\n\nOutput ONLY valid JSON matching: { \"videos\": [{ \"video_title\", \"hook\", \"clips\": [{ \"clip_no\", \"shot_description\", \"camera_move\" }] }] }";
 
-  // 1) Ask for the structured plan first (text).
-  const planResp = await generateOneFrame(
-    masterPrompt + "\n\nFirst, output ONLY the JSON plan (videos[].clips[]).",
-    brief.productImages
-  );
+  const res = await fetch(ENDPOINT(config.gemini.textModel), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": config.gemini.apiKey,
+    },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Gemini plan error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
   let plan;
   try {
-    const jsonMatch = planResp.text.match(/\{[\s\S]*\}/);
-    plan = JSON.parse(jsonMatch ? jsonMatch[0] : planResp.text);
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    plan = JSON.parse(jsonMatch ? jsonMatch[0] : text);
   } catch {
-    plan = { raw: planResp.text }; // keep raw text if the model didn't return clean JSON
+    plan = { raw: text };
   }
 
-  // 2) Generate one frame image per clip — parallelized in batches of 5.
-  const videos = plan.videos || [];
-  const allClipTasks = videos.flatMap((v) =>
-    (v.clips || []).map((clip) => ({ v, clip }))
-  );
+  return { plan };
+}
 
-  const CONCURRENCY = 5;
-  const frames = [];
-  for (let i = 0; i < allClipTasks.length; i += CONCURRENCY) {
-    const batch = allClipTasks.slice(i, i + CONCURRENCY);
-    const results = await Promise.all(batch.map(async ({ v, clip }) => {
-      const framePrompt =
+// Step 2: Generate 3 frames for one video. Call once per video, on demand.
+// Returns { frames: [{ video, clip, mimeType, base64 }] }
+export async function generateFramesForVideo(brief, plan, videoIndex) {
+  const resolvedImages = await resolveImages(brief.productImages);
+  const v = (plan.videos || [])[videoIndex - 1];
+  if (!v) return { frames: [] };
+
+  const frames = await Promise.all(
+    (v.clips || []).map(async (clip) => {
+      const prompt =
         `Storyboard frame. Video: "${v.video_title}". Clip ${clip.clip_no}. ` +
         `${clip.shot_description}. Camera: ${clip.camera_move}. ` +
         `${brief.avatar_free !== false ? "No people/faces, product-only." : ""}`;
-      const r = await generateOneFrame(framePrompt, brief.productImages);
-      if (r.images[0]) {
-        return {
-          video: v.video_title,
-          clip: clip.clip_no,
-          mimeType: r.images[0].mimeType,
-          base64: r.images[0].base64,
-        };
-      }
-      return null;
-    }));
-    frames.push(...results.filter(Boolean));
-  }
+      const r = await generateOneFrame(prompt, resolvedImages);
+      return r.images[0]
+        ? { video: v.video_title, clip: clip.clip_no, mimeType: r.images[0].mimeType, base64: r.images[0].base64 }
+        : null;
+    })
+  );
 
-  return { plan, frames };
+  return { frames: frames.filter(Boolean) };
 }

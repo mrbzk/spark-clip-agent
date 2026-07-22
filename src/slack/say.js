@@ -42,48 +42,89 @@ function reviewButtons(action) {
   ];
 }
 
-// Saves each frame to disk (served at /frames/:filename for Higgsfield),
-// uploads to Slack thread for display, then persists hostedUrls to the store
-// so renderVideo can read them after a server restart.
-export async function postStoryboard(project) {
-  const frames = project.storyboard?.frames || [];
-  const updatedFrames = [];
+// Posts storyboard frames for one video at a time.
+// Saves new frames (those with base64) to disk, uploads them bundled, then posts the brief.
+export async function postStoryboard(project, videoIndex = 1) {
+  const plan = project.storyboard?.plan;
+  const videos = plan?.videos || [];
+  const v = videos[videoIndex - 1];
+  if (!v) return;
 
-  for (const f of frames) {
-    // 1. Save to disk and derive a permanent public URL
+  const allFrames = project.storyboard?.frames || [];
+
+  // Save only the new frames for this video (they still have base64)
+  const newFrames = allFrames.filter((f) => f.video === v.video_title && f.base64);
+  const savedFrames = [];
+  const fileUploads = [];
+
+  for (const f of newFrames) {
     const ext = (f.mimeType || "image/png").includes("jpeg") ? "jpg" : "png";
     const filename = `${crypto.randomUUID()}.${ext}`;
     const filepath = path.join(framesDir, filename);
     fs.writeFileSync(filepath, Buffer.from(f.base64, "base64"));
     const hostedUrl = `${config.app.publicBaseUrl}/frames/${filename}`;
 
-    // 2. Upload to Slack thread for display
-    await client.files.uploadV2({
-      channel_id: project.channel_id,
-      thread_ts: project.thread_ts,
-      filename: `${slug(f.video)}-clip${f.clip}.${ext}`,
+    fileUploads.push({
       file: Buffer.from(f.base64, "base64"),
+      filename: `${slug(f.video)}-clip${f.clip}.${ext}`,
       title: `${f.video} — Clip ${f.clip}`,
     });
 
-    // Drop base64 from storage — the file on disk is the source of truth
-    updatedFrames.push({ video: f.video, clip: f.clip, mimeType: f.mimeType, hostedUrl });
+    savedFrames.push({ video: f.video, clip: f.clip, mimeType: f.mimeType, hostedUrl });
   }
 
-  // Persist hostedUrls (without base64) so renderVideo can read them after a restart
-  store.update(project.thread_ts, {
-    storyboard: { ...project.storyboard, frames: updatedFrames },
-  });
+  // Replace the base64 frames in the store with their hostedUrl versions
+  if (savedFrames.length > 0) {
+    const otherFrames = allFrames.filter((f) => f.video !== v.video_title || !f.base64);
+    store.update(project.thread_ts, {
+      storyboard: { ...project.storyboard, frames: [...otherFrames, ...savedFrames] },
+    });
+  }
 
-  const plan = project.storyboard?.plan;
-  const summary = (plan?.videos || [])
-    .map((v, i) => `*Video ${i + 1}: ${v.video_title}* — hook: ${v.hook || "n/a"}`)
-    .join("\n");
-  await post(project,
-    `🎬 Storyboard ready (${frames.length} frames).\n${summary}\n\nApprove to start rendering, or request changes.`,
+  // Upload all frames for this video in one bundled message
+  if (fileUploads.length > 0) {
+    await client.files.uploadV2({
+      channel_id: project.channel_id,
+      thread_ts: project.thread_ts,
+      file_uploads: fileUploads,
+    });
+  }
+
+  // Brief for this video
+  const brief = project.brief || {};
+  const briefBlock = [
+    `*🎬 Video ${videoIndex} of ${videos.length}: ${v.video_title}*`,
+    `Hook: _${v.hook || "n/a"}_`,
+    ...(v.clips || []).map((c) =>
+      `  • Clip ${c.clip_no}: ${c.shot_description} _(${c.camera_move || "static"})_`
+    ),
+    ``,
     [
-      { type: "section", text: { type: "mrkdwn", text: `🎬 *Storyboard ready* — ${frames.length} frames.\n${summary}` } },
-      ...reviewButtons("storyboard"),
+      brief.product  && `*Product:* ${brief.product}`,
+      brief.platform && `*Platform:* ${brief.platform}`,
+      brief.vibe     && `*Vibe:* ${brief.vibe}`,
+    ].filter(Boolean).join("  |  "),
+  ].filter(Boolean).join("\n");
+
+  await post(project, briefBlock, [
+    { type: "section", text: { type: "mrkdwn", text: briefBlock.slice(0, 3000) } },
+    ...reviewButtons("storyboard"),
+  ]);
+}
+
+export async function postNextVideoChoice(project) {
+  const approvedCount = project.current_video;
+  const next = approvedCount + 1;
+  await post(project,
+    `✅ Video ${approvedCount} approved. Add Video ${next}, or wrap up and deliver what you have?`,
+    [
+      {
+        type: "actions",
+        elements: [
+          { type: "button", style: "primary", text: { type: "plain_text", text: `➕ Add Video ${next}` }, action_id: "add_next_video" },
+          { type: "button", text: { type: "plain_text", text: "✅ Deliver now" }, action_id: "deliver_now" },
+        ],
+      },
     ]);
 }
 
@@ -111,18 +152,3 @@ export async function postFeedbackConfirm(project, feedbackText) {
     ]);
 }
 
-export async function postBatchChoice(project) {
-  const remaining = config.app.totalVideos - project.current_video;
-  await post(project,
-    `Video ${project.current_video} approved. Render all remaining ${remaining} now, or continue one-by-one?`,
-    [
-      { type: "section", text: { type: "mrkdwn", text: `✅ *Video ${project.current_video} approved.* How should I handle the remaining ${remaining}?` } },
-      {
-        type: "actions",
-        elements: [
-          { type: "button", text: { type: "plain_text", text: `⚡ Render all remaining ${remaining}` }, action_id: "render_batch" },
-          { type: "button", style: "primary", text: { type: "plain_text", text: "➡️ One-by-one" }, action_id: "render_one_by_one" },
-        ],
-      },
-    ]);
-}

@@ -20,10 +20,8 @@ receiver.router.use("/frames", express.static(framesDir));
 // ── Higgsfield webhook (Higgsfield POSTs here when a render finishes) ─────────
 receiver.router.use(express.json());
 receiver.router.post("/webhooks/higgsfield", async (req, res) => {
-  const secret = config.higgsfield.webhookSecret;
-  if (secret && req.headers["x-webhook-secret"] !== secret) {
-    return res.sendStatus(401);
-  }
+  // Higgsfield doesn't send a secret header — skip check unless you embed
+  // the secret in the webhook URL path itself for obscurity.
 
   const body = req.body || {};
   const requestId = body.request_id || body.id;

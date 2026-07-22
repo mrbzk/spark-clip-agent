@@ -10,7 +10,6 @@
     "init-db": "node src/store.js --init"
   },
   "dependencies": {
-    "@higgsfield/client": "^0.2.2",
     "@notionhq/client": "^2.2.15",
     "@slack/bolt": "^3.22.0",
     "better-sqlite3": "^11.3.0",

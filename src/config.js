@@ -9,6 +9,7 @@ export const config = {
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
+    textModel: process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash",
     imageModel: process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",
   },
   higgsfield: {
@@ -43,6 +44,7 @@ export const STATES = {
   VIDEO_REVIEW: "VIDEO_REVIEW",
   VIDEO_FEEDBACK_CONFIRM: "VIDEO_FEEDBACK_CONFIRM",
   VIDEO_REVISING: "VIDEO_REVISING",
+  AWAITING_NEXT_CHOICE: "AWAITING_NEXT_CHOICE",
   COMPILING: "COMPILING",
   COMPLETE: "COMPLETE",
   FAILED: "FAILED",

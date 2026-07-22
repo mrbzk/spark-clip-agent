@@ -3,7 +3,7 @@
 // and persists the new state. Slack handlers call into these.
 import { config, STATES } from "./config.js";
 import { store } from "./store.js";
-import { generateStoryboard } from "./integrations/gemini.js";
+import { generatePlan, generateFramesForVideo } from "./integrations/gemini.js";
 import { submitVideoRender } from "./integrations/higgsfield.js";
 import { createProjectPage, updateProject, NOTION_STATUS } from "./integrations/notion.js";
 import { createProjectFolder, uploadVideoFromUrl } from "./integrations/gdrive.js";
@@ -32,24 +32,47 @@ export async function onBriefComplete(project, brief) {
   await generateStoryboardStep(p);
 }
 
-// ── Step 3–4: generate/regenerate storyboard, post for review ────────────────
+// ── Step 3–4: generate/regenerate storyboard for current video, post for review ─
 export async function generateStoryboardStep(project, feedback = null) {
-  // Idempotency: ignore if already in-progress (e.g. two thread replies in quick succession)
   if (!feedback && project.status === STATES.STORYBOARD_GENERATING) return;
   if (feedback && project.status === STATES.STORYBOARD_REVISING) return;
 
   await setStatus(project, feedback ? STATES.STORYBOARD_REVISING : STATES.STORYBOARD_GENERATING);
-  await slack.post(project, feedback
-    ? "✏️ Revising the storyboard with your feedback…"
-    : `🎬 Building the storyboard — ${config.app.totalVideos} videos × ${config.app.clipsPerVideo} clips (${config.app.totalVideos * config.app.clipsPerVideo} Spark Clips). This takes a minute…`);
+
+  const videoIndex = project.current_video || 1;
 
   try {
-    const { plan, frames } = await generateStoryboard(project.brief, feedback);
+    let plan = project.storyboard?.plan;
+
+    // First video: generate the full plan (text-only, fast) before generating frames
+    if (!plan || videoIndex === 1) {
+      await slack.post(project, feedback
+        ? "✏️ Re-planning the storyboard with your feedback…"
+        : `🎬 Planning ${config.app.totalVideos} videos — building Video 1's storyboard now…`);
+      const result = await generatePlan(project.brief, feedback);
+      plan = result.plan;
+    } else {
+      await slack.post(project, feedback
+        ? `✏️ Revising Video ${videoIndex} storyboard with your feedback…`
+        : `🎬 Building Video ${videoIndex} storyboard…`);
+    }
+
+    // Generate just this video's frames (3 clips)
+    const { frames: newFrames } = await generateFramesForVideo(project.brief, plan, videoIndex);
+
+    // Merge: replace any existing frames for this video, keep others
+    const videoTitle = (plan.videos || [])[videoIndex - 1]?.video_title;
+    const existingFrames = (project.storyboard?.frames || []).filter((f) => f.video !== videoTitle);
+    const allFrames = [...existingFrames, ...newFrames];
+
     const prev = project.storyboard || {};
-    const storyboard = { plan, frames, revision: (prev.revision || 0) + (feedback ? 1 : 0) };
-    store.update(project.thread_ts, { storyboard });
+    store.update(project.thread_ts, {
+      storyboard: { ...prev, plan, frames: allFrames, revision: (prev.revision || 0) + (feedback ? 1 : 0) },
+      current_video: videoIndex,
+    });
+
     const p = store.get(project.thread_ts);
-    await slack.postStoryboard(p); // uploads frames + posts Approve / Request changes buttons
+    await slack.postStoryboard(p, videoIndex);
     await setStatus(p, STATES.STORYBOARD_REVIEW);
   } catch (e) {
     console.error(e);
@@ -58,11 +81,12 @@ export async function generateStoryboardStep(project, feedback = null) {
   }
 }
 
-// ── Step 5: storyboard approved → render video n ─────────────────────────────
+// ── Step 5: storyboard for current video approved → render it ────────────────
 export async function onStoryboardApproved(project) {
   if (project.status !== STATES.STORYBOARD_REVIEW) return; // idempotency guard
-  await slack.post(project, "✅ Storyboard approved. Rendering Video 1…");
-  await renderVideo(store.get(project.thread_ts), 1);
+  const videoIndex = project.current_video || 1;
+  await slack.post(project, `✅ Storyboard approved. Rendering Video ${videoIndex}…`);
+  await renderVideo(store.get(project.thread_ts), videoIndex);
 }
 
 export async function renderVideo(project, videoIndex, feedback = null) {
@@ -88,6 +112,7 @@ export async function renderVideo(project, videoIndex, feedback = null) {
       prompt,
       imageUrls: [...frameUrls, ...productUrls],
       model: project.brief.model || config.higgsfield.defaultModel,
+      generateAudio: project.brief.generate_audio || false,
     });
 
     const list = [...(project.videos || [])];
@@ -158,7 +183,7 @@ export async function onVideoFeedbackConfirmed(project, confirmed) {
   await renderVideo(store.get(project.thread_ts), project.current_video, feedback);
 }
 
-// ── Step 8: video approved → next video (one-by-one) or batch remaining ───────
+// ── Step 8: rendered video approved → ask to add another or deliver ──────────
 export async function onVideoApproved(project) {
   if (project.status !== STATES.VIDEO_REVIEW) return;
   const approvedCount = project.current_video;
@@ -167,36 +192,22 @@ export async function onVideoApproved(project) {
     await updateProject(project.notion_page_id, { videosApproved: approvedCount }).catch(() => {});
   }
 
-  if (approvedCount >= config.app.totalVideos) {
-    await compileAndDeliver(store.get(project.thread_ts));
-    return;
-  }
-
-  // First approval → offer batch vs one-by-one.
-  if (approvedCount === 1) {
-    await slack.postBatchChoice(project); // buttons: "Render all remaining" / "One-by-one"
-    return;
-  }
-
-  await advanceToNextVideo(project);
+  await setStatus(project, STATES.AWAITING_NEXT_CHOICE);
+  await slack.postNextVideoChoice(store.get(project.thread_ts));
 }
 
-export async function setRenderMode(project, mode) {
-  store.update(project.thread_ts, { render_mode: mode });
-  const p = store.get(project.thread_ts);
-  // Both modes advance sequentially — "batch" just auto-advances after each approval
-  // without asking, rather than firing all renders simultaneously (which causes race conditions).
-  const msg = mode === "batch"
-    ? `⚡ Got it — I'll auto-advance through each video after approval. Rendering Video ${p.current_video + 1}…`
-    : `➡️ One-by-one it is. Rendering Video ${p.current_video + 1}…`;
-  await slack.post(p, msg);
-  await advanceToNextVideo(p);
-}
-
-async function advanceToNextVideo(project) {
+// ── Add another video: generate its frames and show storyboard ───────────────
+export async function onAddNextVideo(project) {
+  if (project.status !== STATES.AWAITING_NEXT_CHOICE) return;
   const next = project.current_video + 1;
-  await slack.post(project, `➡️ Approved. Rendering Video ${next}…`);
-  await renderVideo(store.get(project.thread_ts), next);
+  store.update(project.thread_ts, { current_video: next });
+  await generateStoryboardStep(store.get(project.thread_ts));
+}
+
+// ── Deliver now: compile and send whatever's been approved ───────────────────
+export async function onDeliverNow(project) {
+  if (project.status !== STATES.AWAITING_NEXT_CHOICE) return;
+  await compileAndDeliver(store.get(project.thread_ts));
 }
 
 // ── Step 9: all approved → upload to Drive, post final links ─────────────────

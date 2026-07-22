@@ -1,40 +1,65 @@
-// Higgsfield video generation (Seedance 2 by default) via the official v2 SDK.
-// We submit with a webhook so the VPS isn't holding a long HTTP call; the
-// webhook route (/webhooks/higgsfield) advances the state machine on completion.
-import { higgsfield, config as hfConfig } from "@higgsfield/client/v2";
+import fetch from "node-fetch";
 import { config } from "../config.js";
 
-hfConfig({ credentials: config.higgsfield.credentials });
+const BASE_URL = "https://platform.higgsfield.ai";
 
-// Submit a render job for one video (assembled from its approved clip frames + product images).
-// imageUrls: array of public image URLs (storyboard frames + product photos).
-// Returns { request_id, status }.
-export async function submitVideoRender({ prompt, imageUrls, model }) {
-  const jobSet = await higgsfield.subscribe(config.higgsfield.endpoint, {
-    input: {
-      model: model || config.higgsfield.defaultModel, // "seedance-2" default
-      prompt,
-      input_images: imageUrls.map((u) => ({ type: "image_url", image_url: u })),
-    },
-    withPolling: false, // rely on webhook; fallback poller reconciles
-    webhook: {
-      url: `${config.app.publicBaseUrl}/webhooks/higgsfield`,
-      secret: config.higgsfield.webhookSecret,
-    },
-  });
-
-  return { request_id: jobSet.id || jobSet.request_id, status: jobSet.status || "queued" };
+function authHeader() {
+  return `Key ${config.higgsfield.credentials}`;
 }
 
-// Fallback: poll a single request's status (used by the background reconciler).
-export async function pollRequest(requestId) {
-  const jobSet = await higgsfield.subscribe(config.higgsfield.endpoint, {
-    requestId,
-    withPolling: true,
+// Submit a render job. Uses the first imageUrl as the primary frame, remaining as
+// image_references (up to 9). Webhook fires back to /webhooks/higgsfield on completion.
+export async function submitVideoRender({ prompt, imageUrls, model, generateAudio = false }) {
+  const modelSlug = model || config.higgsfield.defaultModel;
+  const webhookUrl = `${config.app.publicBaseUrl}/webhooks/higgsfield`;
+  const endpoint = `${BASE_URL}/v1/image2video/${modelSlug}?hf_webhook=${encodeURIComponent(webhookUrl)}`;
+
+  const [primaryImage, ...rest] = imageUrls.filter(Boolean);
+  if (!primaryImage) throw new Error("No image URL provided for Higgsfield render.");
+
+  const body = {
+    image_url: primaryImage,
+    prompt,
+    duration: 5,
+    aspect_ratio: "9:16",
+    resolution: "720p",
+    mode: "std",
+    generate_audio: generateAudio,
+    ...(rest.length > 0 && {
+      image_references: rest.slice(0, 9).map((u) => ({ type: "image_url", image_url: u })),
+    }),
+  };
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: authHeader(),
+    },
+    body: JSON.stringify(body),
   });
-  const job = jobSet.jobs?.[0];
+
+  if (!res.ok) throw new Error(`Higgsfield submit error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return { request_id: data.request_id, status: data.status || "queued" };
+}
+
+// Fallback poller used by the background reconciler if the webhook is missed.
+export async function pollRequest(requestId) {
+  const res = await fetch(`${BASE_URL}/requests/${requestId}/status`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: authHeader(),
+    },
+  });
+
+  if (!res.ok) throw new Error(`Higgsfield poll error ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+
+  const failed = data.status === "failed" || data.status === "nsfw";
   return {
-    status: jobSet.isCompleted ? "completed" : jobSet.isFailed ? "failed" : jobSet.status,
-    url: job?.results?.raw?.url || null,
+    status: data.status === "completed" ? "completed" : failed ? "failed" : "pending",
+    url: data.video?.url || null,
   };
 }

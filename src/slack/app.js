@@ -87,8 +87,8 @@ app.action("video_approve", withProject(async (p) => fsm.onVideoApproved(p)));
 app.action("video_changes", ackOnly("Reply in the thread with the changes you'd like."));
 app.action("video_feedback_confirm", withProject(async (p) => fsm.onVideoFeedbackConfirmed(p, true)));
 app.action("video_feedback_reject", withProject(async (p) => fsm.onVideoFeedbackConfirmed(p, false)));
-app.action("render_batch", withProject(async (p) => fsm.setRenderMode(p, "batch")));
-app.action("render_one_by_one", withProject(async (p) => fsm.setRenderMode(p, "one_by_one")));
+app.action("add_next_video", withProject(async (p) => fsm.onAddNextVideo(p)));
+app.action("deliver_now", withProject(async (p) => fsm.onDeliverNow(p)));
 
 // ── Free-text thread replies = feedback for the current review item ───────────
 app.event("message", async ({ event }) => {

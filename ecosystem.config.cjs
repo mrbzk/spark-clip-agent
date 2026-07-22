@@ -1,4 +1,3 @@
-// pm2 process file — `pm2 start ecosystem.config.js` on the Hostinger VPS.
 module.exports = {
   apps: [
     {
