@@ -9,7 +9,7 @@ export const config = {
   },
   gemini: {
     apiKey: process.env.GEMINI_API_KEY,
-    textModel: process.env.GEMINI_TEXT_MODEL || "gemini-2.5-flash",
+    textModel: process.env.GEMINI_TEXT_MODEL || "gemini-flash-latest",
     imageModel: process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image",
   },
   higgsfield: {
