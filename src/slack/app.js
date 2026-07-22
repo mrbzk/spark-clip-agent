@@ -37,8 +37,8 @@ app.command("/spark-clip", async ({ ack, body, client }) => {
           type: "input", block_id: "model", label: { type: "plain_text", text: "Video model" },
           element: {
             type: "static_select", action_id: "v",
-            initial_option: opt("Seedance 2 (default)", "seedance-2"),
-            options: [opt("Seedance 2 (default)", "seedance-2"), opt("Other (set in config)", "other")],
+            initial_option: opt("Seedance 2 (default)", config.higgsfield.defaultModel),
+            options: [opt("Seedance 2 (default)", config.higgsfield.defaultModel), opt("Other (set in config)", "other")],
           },
         },
         {
@@ -71,7 +71,7 @@ app.view("intake_modal", async ({ ack, view, body, client }) => {
     product: val("product"),
     website: val("website"),
     storyline: val("storyline"),
-    model: val("model") === "other" ? config.higgsfield.defaultModel : "seedance-2",
+    model: config.higgsfield.defaultModel,
     avatar_free: val("avatar") !== "no",
     productImages: (val("images") || "")
       .split(",").map((s) => s.trim()).filter(Boolean)
