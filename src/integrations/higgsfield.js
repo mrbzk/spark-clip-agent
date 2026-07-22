@@ -12,7 +12,7 @@ function authHeader() {
 export async function submitVideoRender({ prompt, imageUrls, model, generateAudio = false }) {
   const modelSlug = model || config.higgsfield.defaultModel;
   const webhookUrl = `${config.app.publicBaseUrl}/webhooks/higgsfield`;
-  const endpoint = `${BASE_URL}/v1/image2video/${modelSlug}?hf_webhook=${encodeURIComponent(webhookUrl)}`;
+  const endpoint = `${BASE_URL}/${modelSlug}?hf_webhook=${encodeURIComponent(webhookUrl)}`;
 
   const [primaryImage, ...rest] = imageUrls.filter(Boolean);
   if (!primaryImage) throw new Error("No image URL provided for Higgsfield render.");

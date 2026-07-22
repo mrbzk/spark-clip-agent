@@ -113,11 +113,11 @@ One project = one record keyed by `thread_ts`. States:
 - Endpoint: `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` with `x-goog-api-key`.
 
 ### 6.2 Higgsfield (video)
-- SDK: `@higgsfield/client/v2`. Auth: `credentials: "KEY_ID:KEY_SECRET"`.
-- Call: `higgsfield.subscribe(endpoint, { input, withPolling:false, webhook:{url,secret} })` — we prefer **webhook** delivery so the VPS isn't holding long HTTP calls; a polling worker is the fallback.
-- Model: **Seedance 2** by default; overridable per project (`brief.model`). The exact endpoint slug for Seedance 2 must be confirmed from `docs.higgsfield.ai` — it's stored in config as `HIGGSFIELD_ENDPOINT` so no code change is needed. (Image-to-video pattern seen in the SDK: `/v1/image2video/dop` with `input_images`; Seedance 2 accepts up to 9 images + text.)
-- Input assembled from: approved storyboard frames + product images + per-clip prompt.
-- Response: `{ status, request_id, video: { url } }`. On `completed`, we store the URL.
+- Raw REST calls via `fetch` (no SDK dependency). Auth header: `Authorization: Key KEY_ID:KEY_SECRET`.
+- Call: `POST https://platform.higgsfield.ai/{model}?hf_webhook={url}` — the model slug goes directly off the API root, there is **no** `/v1/image2video/` prefix. We prefer **webhook** delivery so the VPS isn't holding long HTTP calls; a polling worker (`GET /requests/{request_id}/status`) is the fallback.
+- Model: **`seedance_2_0`** by default (Seedance 2.0; underscore-separated, confirmed against Higgsfield's own CLI docs and dashboard-generated code samples) — overridable per project (`brief.model`), stored in config as `HIGGSFIELD_DEFAULT_MODEL`.
+- Input assembled from: approved storyboard frames + product images + per-clip prompt, sent as `image_url` (primary) + `image_references` (up to 9 more).
+- Response: `{ request_id, status_url, cancel_url }` on submit; polling returns `{ status, video: { url } }`. On `completed`, we store the URL.
 
 ### 6.3 Notion (Project Tracker)
 - SDK: `@notionhq/client`. A database ("Spark Clip Projects") with properties: Name, Status (select), Product, Website, Model, Videos Approved (number), Storyboard link, Video links (rich text/URLs), Drive folder (URL), Slack thread (URL), Created.
