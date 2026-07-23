@@ -24,14 +24,18 @@ receiver.router.post("/webhooks/higgsfield", async (req, res) => {
   // the secret in the webhook URL path itself for obscurity.
 
   const body = req.body || {};
+  console.log("Higgsfield webhook received:", JSON.stringify(body));
   const requestId = body.request_id || body.id;
   const status = body.status;
   const videoUrl = body.video?.url || body.results?.raw?.url || null;
   res.sendStatus(200); // ack fast
 
   if (!requestId) return;
-  const ok = status === "completed" && videoUrl;
-  try { await onRenderComplete(requestId, videoUrl, ok); }
+
+  const failed = status === "failed" || status === "nsfw";
+  if (!(status === "completed" && videoUrl) && !failed) return; // intermediate status (queued/processing) — wait for a later call or the poller
+
+  try { await onRenderComplete(requestId, failed ? null : videoUrl, !failed); }
   catch (e) { console.error("webhook handler error:", e.message); }
 });
 
