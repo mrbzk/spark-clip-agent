@@ -7,28 +7,18 @@ function authHeader() {
   return `Key ${config.higgsfield.credentials}`;
 }
 
-// Submit a render job. Uses the first imageUrl as the primary frame, remaining as
-// image_references (up to 9). Webhook fires back to /webhooks/higgsfield on completion.
-export async function submitVideoRender({ prompt, imageUrls, model, generateAudio = false }) {
+// Submit a render job. Uses the first imageUrl as the primary (and only) reference
+// frame — DoP's schema takes a single image_url, not multiple references.
+// Webhook fires back to /webhooks/higgsfield on completion.
+export async function submitVideoRender({ prompt, imageUrls, model }) {
   const modelSlug = model || config.higgsfield.defaultModel;
   const webhookUrl = `${config.app.publicBaseUrl}/webhooks/higgsfield`;
   const endpoint = `${BASE_URL}/${modelSlug}?hf_webhook=${encodeURIComponent(webhookUrl)}`;
 
-  const [primaryImage, ...rest] = imageUrls.filter(Boolean);
+  const [primaryImage] = imageUrls.filter(Boolean);
   if (!primaryImage) throw new Error("No image URL provided for Higgsfield render.");
 
-  const body = {
-    image_url: primaryImage,
-    prompt,
-    duration: 5,
-    aspect_ratio: "9:16",
-    resolution: "720p",
-    mode: "std",
-    generate_audio: generateAudio,
-    ...(rest.length > 0 && {
-      image_references: rest.slice(0, 9).map((u) => ({ type: "image_url", image_url: u })),
-    }),
-  };
+  const body = { prompt, image_url: primaryImage, enhance_prompt: true };
 
   const res = await fetch(endpoint, {
     method: "POST",

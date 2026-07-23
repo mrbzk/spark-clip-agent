@@ -16,7 +16,7 @@ export async function createProjectPage(brief, slackThreadUrl) {
       Status: { select: { name: "Intake" } },
       Product: { rich_text: [{ text: { content: brief.product || "" } }] },
       Website: brief.website ? { url: brief.website } : { url: null },
-      Model: { rich_text: [{ text: { content: brief.model || "seedance-2" } }] },
+      Model: { rich_text: [{ text: { content: brief.model || config.higgsfield.defaultModel } }] },
       "Videos Approved": { number: 0 },
       "Slack Thread": slackThreadUrl ? { url: slackThreadUrl } : { url: null },
       Created: { date: { start: new Date().toISOString() } },

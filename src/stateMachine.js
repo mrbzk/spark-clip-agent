@@ -112,7 +112,6 @@ export async function renderVideo(project, videoIndex, feedback = null) {
       prompt,
       imageUrls: [...frameUrls, ...productUrls],
       model: project.brief.model || config.higgsfield.defaultModel,
-      generateAudio: project.brief.generate_audio || false,
     });
 
     const list = [...(project.videos || [])];

@@ -37,8 +37,8 @@ app.command("/spark-clip", async ({ ack, body, client }) => {
           type: "input", block_id: "model", label: { type: "plain_text", text: "Video model" },
           element: {
             type: "static_select", action_id: "v",
-            initial_option: opt("Seedance 2 (default)", config.higgsfield.defaultModel),
-            options: [opt("Seedance 2 (default)", config.higgsfield.defaultModel), opt("Other (set in config)", "other")],
+            initial_option: opt("DoP Standard (default)", config.higgsfield.defaultModel),
+            options: [opt("DoP Standard (default)", config.higgsfield.defaultModel), opt("Other (set in config)", "other")],
           },
         },
         {

@@ -1,12 +1,12 @@
 # Spark Clip Agent
 
-A Slack-driven agent that turns a product brief into **5 avatar-free product-video ads (15 Spark Clips)** using **Gemini** storyboards and **Higgsfield / Seedance 2** video, with **Notion** logging and **Google Drive** delivery.
+A Slack-driven agent that turns a product brief into **5 avatar-free product-video ads (15 Spark Clips)** using **Gemini** storyboards and **Higgsfield** video (DoP Standard by default), with **Notion** logging and **Google Drive** delivery.
 
 > Read `ARCHITECTURE.md` first for the full design and the state machine.
 
 ## What it does
 
-`/spark-clip` in Slack → intake modal → agent opens a project thread → generates a storyboard (15 clips across 5 videos) with Gemini → you **Approve** or give feedback in the thread → on approval it renders **Video 1** with Seedance 2 → you approve/feedback each video → after video 1 you choose **render all remaining** or **one-by-one** (default one-by-one) → when all 5 are approved it uploads to a Google Drive folder and posts the final links. Every step is logged to Notion.
+`/spark-clip` in Slack → intake modal → agent opens a project thread → generates a storyboard (15 clips across 5 videos) with Gemini → you **Approve** or give feedback in the thread → on approval it renders **Video 1** with Higgsfield → you approve/feedback each video → after video 1 you choose **render all remaining** or **one-by-one** (default one-by-one) → when all 5 are approved it uploads to a Google Drive folder and posts the final links. Every step is logged to Notion.
 
 ## Project layout
 
@@ -27,7 +27,7 @@ spark-clip-agent/
    │  └─ say.js             all Slack posting helpers (Block Kit)
    └─ integrations/
       ├─ gemini.js          storyboard image generation
-      ├─ higgsfield.js      Seedance 2 render submit + poll
+      ├─ higgsfield.js      Higgsfield render submit + poll
       ├─ notion.js          project tracker create/update
       └─ gdrive.js          final delivery folder + uploads
 ```
@@ -61,7 +61,7 @@ Create a Google Cloud **service account**, download its JSON key to `./secrets/`
 
 ## Higgsfield setup
 
-Get API credentials (`KEY_ID:KEY_SECRET`) from the Higgsfield dashboard. **Confirm the exact Seedance 2 endpoint slug** in `docs.higgsfield.ai` and set `HIGGSFIELD_ENDPOINT` — the code never hard-codes it. Renders return via the webhook at `/webhooks/higgsfield`; the background reconciler catches any missed webhooks.
+Get API credentials (`KEY_ID:KEY_SECRET`) from the Higgsfield dashboard. Default model is `higgsfield-ai/dop/standard` — **check the model gallery on `cloud.higgsfield.ai`** for which models are actually enabled for API access on your account before changing `HIGGSFIELD_DEFAULT_MODEL` (Seedance 2.0, for example, shows up in the regular web app but is not necessarily enabled for the public API). Renders return via the webhook at `/webhooks/higgsfield`; the background reconciler catches any missed webhooks.
 
 ### ⚠️ Hosting images for Higgsfield
 Higgsfield needs **publicly reachable image URLs** for the storyboard frames and product photos it renders from. Slack file permalinks are not reliably public. In production, upload the Gemini frames to a public bucket (S3/R2/GCS or your VPS behind nginx) and store that URL as `frame.hostedUrl` / `productImages[].hostedUrl`. The scaffold marks exactly where these URLs are read (`stateMachine.renderVideo`) and written (`slack/say.postStoryboard`). This is the one piece you must wire to your own storage.

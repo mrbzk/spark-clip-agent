@@ -14,8 +14,8 @@ export const config = {
   },
   higgsfield: {
     credentials: process.env.HIGGSFIELD_CREDENTIALS,
-    endpoint: process.env.HIGGSFIELD_ENDPOINT || "/seedance_2_0",
-    defaultModel: process.env.HIGGSFIELD_DEFAULT_MODEL || "seedance_2_0",
+    endpoint: process.env.HIGGSFIELD_ENDPOINT || "/higgsfield-ai/dop/standard",
+    defaultModel: process.env.HIGGSFIELD_DEFAULT_MODEL || "higgsfield-ai/dop/standard",
     webhookSecret: process.env.HIGGSFIELD_WEBHOOK_SECRET,
   },
   notion: {

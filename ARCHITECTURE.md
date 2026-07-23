@@ -115,8 +115,8 @@ One project = one record keyed by `thread_ts`. States:
 ### 6.2 Higgsfield (video)
 - Raw REST calls via `fetch` (no SDK dependency). Auth header: `Authorization: Key KEY_ID:KEY_SECRET`.
 - Call: `POST https://platform.higgsfield.ai/{model}?hf_webhook={url}` — the model slug goes directly off the API root, there is **no** `/v1/image2video/` prefix. We prefer **webhook** delivery so the VPS isn't holding long HTTP calls; a polling worker (`GET /requests/{request_id}/status`) is the fallback.
-- Model: **`seedance_2_0`** by default (Seedance 2.0; underscore-separated, confirmed against Higgsfield's own CLI docs and dashboard-generated code samples) — overridable per project (`brief.model`), stored in config as `HIGGSFIELD_DEFAULT_MODEL`.
-- Input assembled from: approved storyboard frames + product images + per-clip prompt, sent as `image_url` (primary) + `image_references` (up to 9 more).
+- Model: **`higgsfield-ai/dop/standard`** by default. Seedance 2.0 is shown in the Higgsfield web app but is **not enabled for API access** on this account/workspace — only the DoP family (Lite/Standard/Turbo) is, confirmed via the model gallery on `cloud.higgsfield.ai`. Overridable per project (`brief.model`), stored in config as `HIGGSFIELD_DEFAULT_MODEL`.
+- Request schema confirmed directly from the API's own validation errors (it returns FastAPI/Pydantic-style 422s listing missing fields): only `prompt` and `image_url` are required. We send the first approved storyboard frame as `image_url` — DoP takes a single reference image, not multiple.
 - Response: `{ request_id, status_url, cancel_url }` on submit; polling returns `{ status, video: { url } }`. On `completed`, we store the URL.
 
 ### 6.3 Notion (Project Tracker)
