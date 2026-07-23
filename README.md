@@ -6,7 +6,7 @@ A Slack-driven agent that turns a product brief into **5 avatar-free product-vid
 
 ## What it does
 
-`/spark-clip` in Slack → intake modal → agent opens a project thread → generates a storyboard (15 clips across 5 videos) with Gemini → you **Approve** or give feedback in the thread → on approval it renders **Video 1** with Higgsfield → you approve/feedback each video → after video 1 you choose **render all remaining** or **one-by-one** (default one-by-one) → when all 5 are approved it uploads to a Google Drive folder and posts the final links. Every step is logged to Notion.
+`/spark-clip` in Slack → intake modal → agent opens a project thread → generates a storyboard for **Video 1 only** (3 clips) with Gemini → you **Approve** or give feedback in the thread → on approval it renders **Video 1** with Higgsfield → you approve/feedback the video → then choose to **add Video 2** (planned + rendered the same way) or **deliver now** → repeats one video at a time up to 5 → when you're done it uploads to a Google Drive folder and posts the final links. Every step is logged to Notion.
 
 ## Project layout
 

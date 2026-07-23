@@ -9,10 +9,10 @@
 ## 1. What the agent does (plain-English recap)
 
 1. A project is **initiated from a Slack channel** (slash command or a message in a dedicated channel).
-2. The agent **opens a Slack thread** and gathers the brief: product, website, product images, rough storyline/details, and options (avatar-free, model = Seedance 2 by default).
-3. It generates a **storyboard for all 5 videos** (15 Spark Clips, 3 per video) using **Gemini image generation**, primarily using the supplied product photos.
+2. The agent **opens a Slack thread** and gathers the brief: product, website, product images, rough storyline/details, and options (avatar-free, model = DoP Standard by default).
+3. It generates a **storyboard for Video 1 only** (3 Spark Clips) using **Gemini image generation**, primarily using the supplied product photos. Each subsequent video is planned the same way, one at a time, only once you choose to add it.
 4. The storyboard is **posted to the thread for review** — **Approve** or **give feedback**. Feedback → storyboard is revised → re-posted.
-5. On storyboard approval, the agent renders **video 1** using **Higgsfield (Seedance 2 by default)**.
+5. On storyboard approval, the agent renders **video 1** using **Higgsfield (DoP Standard by default)**.
 6. The **v1 link is posted to the thread**.
 7. **Approve or feedback.** Feedback → agent confirms the interpreted changes → on acceptance, **re-renders**.
 8. On video approval, the user can **render all remaining 4 at once** or **continue one-by-one** (default: **one-by-one**).
@@ -26,7 +26,7 @@ Everything is **logged to Notion** at each state change.
 
 - **5 videos** per project.
 - **3 clips per video** = **15 clips**.
-- Seedance 2 supports up to ~15s per shot and multi-shot composition, so each "video" is assembled from 3 clip-shots. The storyboard defines all 15 clips grouped under their 5 parent videos so the whole set is reviewed in one pass (per the spec: "the storyboard for all 5 videos created").
+- Each "video" is assembled from 3 clip-shots. Storyboards are planned **one video at a time** (3 clips per Gemini call), not all 15 clips upfront — Video 1 is planned first, and each further video is only planned once you choose to add it.
 
 > If your intended ratio is different (e.g. 5 clips × 3 videos), it's a single config constant — `CLIPS_PER_VIDEO` — so the pipeline doesn't need rewriting.
 
@@ -71,7 +71,7 @@ Everything is **logged to Notion** at each state change.
 **Initiation** — `/spark-clip` slash command (or posting in the dedicated `#spark-clips` channel). The agent replies in-channel, creating the project thread.
 
 **Brief intake** — the agent asks for the brief in the thread. Two supported input styles:
-- **Form (recommended):** a Slack modal opened from the slash command, capturing product name, website URL, storyline/details, avatar-free toggle, model dropdown (default Seedance 2), and image uploads/URLs.
+- **Form (recommended):** a Slack modal opened from the slash command, capturing product name, website URL, storyline/details, avatar-free toggle, model dropdown (default DoP Standard), and image uploads/URLs.
 - **Conversational:** the agent asks follow-up questions in-thread until all required fields are present.
 
 **Approvals** — every review step posts a message with two Block Kit buttons: **✅ Approve** and **✏️ Request changes**, plus a note that they can just reply with feedback in the thread. Free-text replies in the thread are always treated as feedback for the current review item.
