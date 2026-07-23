@@ -43,8 +43,8 @@ export async function generateStoryboardStep(project, feedback = null) {
 
   try {
     await slack.post(project, feedback
-      ? `✏️ Revising Video ${videoIndex} storyboard with your feedback…`
-      : `🎬 Planning Video ${videoIndex} of ${config.app.totalVideos}…`);
+      ? "✏️ Revising your video storyboard with your feedback…"
+      : "🎬 Planning your video storyboard…");
 
     // Plan and generate frames for just this one video, on demand.
     const { video } = await generateVideoPlan(project.brief, videoIndex, feedback);

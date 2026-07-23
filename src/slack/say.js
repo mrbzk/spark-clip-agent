@@ -93,7 +93,7 @@ export async function postStoryboard(project, videoIndex = 1) {
   // Brief for this video
   const brief = project.brief || {};
   const briefBlock = [
-    `*🎬 Video ${videoIndex} of ${config.app.totalVideos}: ${v.video_title}*`,
+    `*🎬 Here's your storyboard: ${brief.product || v.video_title}*`,
     `Hook: _${v.hook || "n/a"}_`,
     ...(v.clips || []).map((c) =>
       `  • Clip ${c.clip_no}: ${c.shot_description} _(${c.camera_move || "static"})_`
