@@ -1,7 +1,7 @@
 import { config } from "./config.js";
 
-// Builds the master storyboard prompt for Gemini. Product-led, avatar-free.
-export function buildStoryboardPrompt(brief, feedback = null) {
+// Builds the storyboard prompt for Gemini, for a single video at a time. Product-led, avatar-free.
+export function buildStoryboardPrompt(brief, videoIndex, feedback = null) {
   const { totalVideos, clipsPerVideo } = config.app;
   const avatarRule = brief.avatar_free !== false
     ? "STRICT: avatar-free. No human faces, no people, no avatars. Product is the hero in every frame."
@@ -14,10 +14,11 @@ WEBSITE: ${brief.website || "n/a"}
 STORYLINE / DIRECTION: ${brief.storyline || "(none provided)"}
 ${avatarRule}
 
-Task: design a storyboard of ${totalVideos} short ad videos. Each video has ${clipsPerVideo} clip-shots
-(total ${totalVideos * clipsPerVideo} Spark Clips). Use the supplied product photos as the visual basis.
+This product is getting ${totalVideos} short ad videos in total (${totalVideos * clipsPerVideo} Spark Clips
+overall). Design ONLY Video ${videoIndex} of ${totalVideos} right now, with ${clipsPerVideo} clip-shots.
+Use the supplied product photos as the visual basis.
 
-For EACH of the ${totalVideos} videos return:
+Return:
   - video_title
   - hook (the scroll-stopping first-second idea)
   - for each of the ${clipsPerVideo} clips: { clip_no, shot_description, camera_move, on_screen_text, product_focus }

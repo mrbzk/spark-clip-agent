@@ -3,7 +3,7 @@
 // and persists the new state. Slack handlers call into these.
 import { config, STATES } from "./config.js";
 import { store } from "./store.js";
-import { generatePlan, generateFramesForVideo } from "./integrations/gemini.js";
+import { generateVideoPlan, generateFramesForVideo } from "./integrations/gemini.js";
 import { submitVideoRender } from "./integrations/higgsfield.js";
 import { createProjectPage, updateProject, NOTION_STATUS } from "./integrations/notion.js";
 import { createProjectFolder, uploadVideoFromUrl } from "./integrations/gdrive.js";
@@ -42,32 +42,24 @@ export async function generateStoryboardStep(project, feedback = null) {
   const videoIndex = project.current_video || 1;
 
   try {
-    let plan = project.storyboard?.plan;
+    await slack.post(project, feedback
+      ? `✏️ Revising Video ${videoIndex} storyboard with your feedback…`
+      : `🎬 Planning Video ${videoIndex} of ${config.app.totalVideos}…`);
 
-    // First video: generate the full plan (text-only, fast) before generating frames
-    if (!plan || videoIndex === 1) {
-      await slack.post(project, feedback
-        ? "✏️ Re-planning the storyboard with your feedback…"
-        : `🎬 Planning ${config.app.totalVideos} videos — building Video 1's storyboard now…`);
-      const result = await generatePlan(project.brief, feedback);
-      plan = result.plan;
-    } else {
-      await slack.post(project, feedback
-        ? `✏️ Revising Video ${videoIndex} storyboard with your feedback…`
-        : `🎬 Building Video ${videoIndex} storyboard…`);
-    }
+    // Plan and generate frames for just this one video, on demand.
+    const { video } = await generateVideoPlan(project.brief, videoIndex, feedback);
+    const { frames: newFrames } = await generateFramesForVideo(project.brief, video);
 
-    // Generate just this video's frames (3 clips)
-    const { frames: newFrames } = await generateFramesForVideo(project.brief, plan, videoIndex);
+    // Merge into the accumulating per-video plan, replacing this video's frames
+    const videos = [...(project.storyboard?.plan?.videos || [])];
+    videos[videoIndex - 1] = video;
 
-    // Merge: replace any existing frames for this video, keep others
-    const videoTitle = (plan.videos || [])[videoIndex - 1]?.video_title;
-    const existingFrames = (project.storyboard?.frames || []).filter((f) => f.video !== videoTitle);
+    const existingFrames = (project.storyboard?.frames || []).filter((f) => f.video !== video.video_title);
     const allFrames = [...existingFrames, ...newFrames];
 
     const prev = project.storyboard || {};
     store.update(project.thread_ts, {
-      storyboard: { ...prev, plan, frames: allFrames, revision: (prev.revision || 0) + (feedback ? 1 : 0) },
+      storyboard: { ...prev, plan: { videos }, frames: allFrames, revision: (prev.revision || 0) + (feedback ? 1 : 0) },
       current_video: videoIndex,
     });
 

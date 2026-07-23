@@ -55,11 +55,11 @@ async function generateOneFrame(promptText, productImages) {
   return out;
 }
 
-// Step 1: Generate the full storyboard plan (text-only, fast).
-// Returns { plan: { videos: [{ video_title, hook, clips: [{ clip_no, shot_description, camera_move }] }] } }
-export async function generatePlan(brief, feedback = null) {
-  const prompt = buildStoryboardPrompt(brief, feedback) +
-    "\n\nOutput ONLY valid JSON matching: { \"videos\": [{ \"video_title\", \"hook\", \"clips\": [{ \"clip_no\", \"shot_description\", \"camera_move\" }] }] }";
+// Step 1: Generate the plan for a single video (text-only, fast). Called once per video, on demand.
+// Returns { video: { video_title, hook, clips: [{ clip_no, shot_description, camera_move }] } }
+export async function generateVideoPlan(brief, videoIndex, feedback = null) {
+  const prompt = buildStoryboardPrompt(brief, videoIndex, feedback) +
+    "\n\nOutput ONLY valid JSON matching: { \"video_title\", \"hook\", \"clips\": [{ \"clip_no\", \"shot_description\", \"camera_move\" }] }";
 
   const res = await fetch(ENDPOINT(config.gemini.textModel), {
     method: "POST",
@@ -76,33 +76,32 @@ export async function generatePlan(brief, feedback = null) {
   const data = await res.json();
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-  let plan;
+  let video;
   try {
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    plan = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    video = JSON.parse(jsonMatch ? jsonMatch[0] : text);
   } catch {
-    plan = { raw: text };
+    video = { raw: text };
   }
 
-  return { plan };
+  return { video };
 }
 
-// Step 2: Generate 3 frames for one video. Call once per video, on demand.
+// Step 2: Generate the clip frames for a single video's plan. Called right after generateVideoPlan.
 // Returns { frames: [{ video, clip, mimeType, base64 }] }
-export async function generateFramesForVideo(brief, plan, videoIndex) {
+export async function generateFramesForVideo(brief, video) {
   const resolvedImages = await resolveImages(brief.productImages);
-  const v = (plan.videos || [])[videoIndex - 1];
-  if (!v) return { frames: [] };
+  if (!video) return { frames: [] };
 
   const frames = await Promise.all(
-    (v.clips || []).map(async (clip) => {
+    (video.clips || []).map(async (clip) => {
       const prompt =
-        `Storyboard frame. Video: "${v.video_title}". Clip ${clip.clip_no}. ` +
+        `Storyboard frame. Video: "${video.video_title}". Clip ${clip.clip_no}. ` +
         `${clip.shot_description}. Camera: ${clip.camera_move}. ` +
         `${brief.avatar_free !== false ? "No people/faces, product-only." : ""}`;
       const r = await generateOneFrame(prompt, resolvedImages);
       return r.images[0]
-        ? { video: v.video_title, clip: clip.clip_no, mimeType: r.images[0].mimeType, base64: r.images[0].base64 }
+        ? { video: video.video_title, clip: clip.clip_no, mimeType: r.images[0].mimeType, base64: r.images[0].base64 }
         : null;
     })
   );
